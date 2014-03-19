@@ -43,7 +43,8 @@ def print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth
     if exit_port_check is False:
       if avg_bandwidth >= 500:
         print("Elligible for T-shirt")
-        print("Reason : Average bandwidth greater than 500KBytes/s")
+        print("Reason : Average bandwidth greater than 500KBytes/s and "
+	      "relay uptime greater than 95%")
       else:
         print("Not elligible for T-shirt")
         print("Reason : Average bandwidth less than 500KBytes/s and port 80 blocked")
@@ -54,7 +55,7 @@ def print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth
       else:
           print("Elligible for T-shirt")
 	  print("Reason : Average bandwidth greater than 100KBytes/s,"
-	         "relay uptime greater than 95% and port 80 unblocked")
+	        "relay uptime greater than 95% and port 80 unblocked")
   print("")
 
 
@@ -155,20 +156,10 @@ def check_tshirt(search_query):
   global bandwidth_data
   global thread_lock
 
-  # Fetch matching relays from summary document
+  # Fetch the required documents from onionoo
   params = {
-     'type' : 'relay',
      'search' : search_query
   }
-  matched_relays = fetch_data('summary', params)
-  print "Fetched summary document"
-  fingerprints = [i['f'] for i in matched_relays['relays']]
-  if fingerprints == []:
-    print 'No results found'
-    exit()
-
-  # Fetch the required documents from onionoo
-  params.pop('type')
   bandwidth_data = fetch_data('bandwidth', params)['relays']
   print "Fetched bandwidth document"
   uptime_data = fetch_data('uptime', params)['relays']
@@ -179,7 +170,7 @@ def check_tshirt(search_query):
 
   # Create and start the threads
   threads = []
-  for i in range(len(fingerprints)):
+  for i in range(len(exit_policies)):
     threads.append(relay_thread(i))
     threads[-1].start()
   # Wait for the threads to finish

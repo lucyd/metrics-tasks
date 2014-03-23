@@ -4,15 +4,9 @@ import urllib, urllib2
 import json
 import threading
 import _strptime
-from datetime import datetime
+from datetime import timedelta, datetime
 
 TWO_MONTHS = 2 * 30 * 86400
-
-# Global variables
-bandwidth_data = []
-uptime_data = []
-exit_policies = []
-thread_lock = threading.Lock()
 
 
 def print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth):
@@ -59,29 +53,6 @@ def print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth
   print("")
 
 
-def calculate_sum(relay_history):
-  """ Calculates the sum of values in 2-month time frame """
-
-  two_months_values = TWO_MONTHS / relay_history['interval']
-  _sum = 0
-  for i in relay_history['values'][-two_months_values:]:
-    if i is not 'null' and i is not None:
-      _sum += (i/1000.0)
-  return _sum * relay_history['interval']
-
-
-def check_in_ports(ports):
-  """ Checks for port 80 is present in the ports list """
-
-  for entry in ports:
-    if entry == '80':
-      return True
-    if '-' in entry:
-      [x,y] = entry.split('-')
-      if 80 in range(int(x),int(y)):
-        return True
-  return False
-
 def fetch_data(doc_type, params):
   """ Fetches onionoo data and returns response formatted as a dictionary """
 
@@ -103,6 +74,57 @@ def fetch_data(doc_type, params):
   return response_dict
 
 
+def calculate_2mo_avg(response, response_type):
+  """ Calculates the average of values in 2-month time frame """
+
+  # Check if required data is present in the response
+  if response_type == 'uptime':
+    if '3_months' not in response['uptime'].keys():
+      return -1
+    data = response['uptime']['3_months']
+  elif response_type == 'bandwidth':
+    if '3_months' not in response['write_history'].keys():
+      return -1
+    data = response['write_history']['3_months']
+  # Sum up all values within past 2 months
+  _sum = 0
+  count = 0
+  today = datetime.now()
+  first = datetime.strptime(data['first'], "%Y-%m-%d %H:%M:%S")
+  last = datetime.strptime(data['last'], "%Y-%m-%d %H:%M:%S")
+  for i in range(data['count']):
+    value_date = first + timedelta(seconds=(i * float(data['interval'])))
+    if (today - value_date).total_seconds() <= TWO_MONTHS:
+      if data['values'][i] not in [None, 'null']:
+        _sum += (data['values'][i])
+        count += 1
+  # Find number of values between last and today
+  time_interval = int((today - last).total_seconds())
+  last_today_values = time_interval/data['interval']
+  # Calculate the result
+  if response_type == 'uptime':
+    total_up_time = _sum * data['factor'] * data['interval']
+    uptime_percent = round(total_up_time * 100 / TWO_MONTHS, 2)
+    return uptime_percent
+  elif response_type == 'bandwidth':
+    total_values = count + last_today_values
+    result = (_sum * data['factor'])/total_values
+    return round(result/1000.0, 2)
+
+
+def check_in_ports(ports):
+  """ Checks if port 80 is present in the ports list """
+
+  for entry in ports:
+    if entry == '80':
+      return True
+    if '-' in entry:
+      [x,y] = entry.split('-')
+      if 80 in range(int(x),int(y)):
+        return True
+  return False
+
+
 def check_exit_port(response):
   """ Checks if relay allows network traffic to exit through port 80 """
 
@@ -110,54 +132,29 @@ def check_exit_port(response):
   if 'accept' in exit_policy:
     return check_in_ports(exit_policy['accept'])
   elif 'reject' in exit_policy:
-    return check_in_ports(exit_policy['reject'])
+    return not check_in_ports(exit_policy['reject'])
   return False
 
 
 def get_uptime_percent(response):
   """ Calculates the relay's uptime from onionoo's uptime document """
 
-  if '3_months' not in response['uptime'].keys():
-    return -1
-  uptime = calculate_sum(response['uptime']['3_months'])
-  uptime_percent = round(uptime/(2*30*864), 2)
-  return uptime_percent
+  return calculate_2mo_avg(response, 'uptime')
 
 
 def get_avg_bandwidth(response):
   """ Calculates average bandwidth of traffic through the relay """
 
-  if '3_months' not in response['write_history'].keys():
-    return -1
-
-  # Calculate the sum of values in response
-  bandwidth_data = response['write_history']['3_months']
-  traffic_sum = calculate_sum(bandwidth_data)
+  return calculate_2mo_avg(response, 'bandwidth')
   
-  # Find number of values between last and today
-  last_date = datetime.strptime(bandwidth_data['last'], "%Y-%m-%d %H:%M:%S")
-  today_date = datetime.now()
-  time_interval = int((today_date - last_date).total_seconds())
-  last_today_values = time_interval/bandwidth_data['interval']
-  
-  # Calculate the result
-  two_months_values = TWO_MONTHS/bandwidth_data['interval']
-  total_values = two_months_values + last_today_values
-  result = (traffic_sum * bandwidth_data['factor'])/total_values
-
-  return round(result/1000.0,2)
-
 
 def check_tshirt(search_query):
-  """ Fetches required onionoo documents and invokes threads """
-
-  global exit_policies
-  global uptime_data
-  global bandwidth_data
-  global thread_lock
+  """ Fetches required onionoo documents and evaluates the 
+      t-shirt qualification criteria for each of the relays """
 
   # Fetch the required documents from onionoo
   params = {
+     'type' : 'relay',
      'search' : search_query
   }
   bandwidth_data = fetch_data('bandwidth', params)['relays']
@@ -168,33 +165,13 @@ def check_tshirt(search_query):
   exit_policies = fetch_data('details', params)['relays']
   print "Fetched details document"
 
-  # Create and start the threads
-  threads = []
   for i in range(len(exit_policies)):
-    threads.append(relay_thread(i))
-    threads[-1].start()
-  # Wait for the threads to finish
-  for thread in threads:
-    thread.join()
-
-
-class relay_thread(threading.Thread):
-  """ A subclass of the Thread class that handles relay-specific data"""
-  def __init__(self, thread_id):
-    threading.Thread.__init__(self)
-    self.thread_id = thread_id
-  def run(self):
-    global exit_polices
-    global uptime_data
-    global bandwidth_data
-    fingerprint = exit_policies[self.thread_id]['fingerprint']
-    exit_port_check = check_exit_port(exit_policies[self.thread_id])
-    uptime_percent = get_uptime_percent(uptime_data[self.thread_id])
-    avg_bandwidth = get_avg_bandwidth(bandwidth_data[self.thread_id])
-    thread_lock.acquire()
+    fingerprint = exit_policies[i]['fingerprint']
+    exit_port_check = check_exit_port(exit_policies[i])
+    uptime_percent = get_uptime_percent(uptime_data[i])
+    avg_bandwidth = get_avg_bandwidth(bandwidth_data[i])
     print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth)
-    thread_lock.release()
-    
+
 
 if __name__ == "__main__":
   search_query = raw_input('Enter relay search-query : ')

@@ -98,18 +98,8 @@ def calculate_2mo_avg(response, response_type):
       if data['values'][i] not in [None, 'null']:
         _sum += (data['values'][i])
         count += 1
-  # Find number of values between last and today
-  time_interval = int((today - last).total_seconds())
-  last_today_values = time_interval/data['interval']
   # Calculate the result
-  if response_type == 'uptime':
-    total_up_time = _sum * data['factor'] * data['interval']
-    uptime_percent = round(total_up_time * 100 / TWO_MONTHS, 2)
-    return uptime_percent
-  elif response_type == 'bandwidth':
-    total_values = count + last_today_values
-    result = (_sum * data['factor'])/total_values
-    return round(result/1000.0, 2)
+  return (_sum * data['factor'])/count
 
 
 def check_in_ports(ports):
@@ -139,13 +129,13 @@ def check_exit_port(response):
 def get_uptime_percent(response):
   """ Calculates the relay's uptime from onionoo's uptime document """
 
-  return calculate_2mo_avg(response, 'uptime')
+  return round(calculate_2mo_avg(response, 'uptime') * 100, 2)
 
 
 def get_avg_bandwidth(response):
   """ Calculates average bandwidth of traffic through the relay """
 
-  return calculate_2mo_avg(response, 'bandwidth')
+  return round(calculate_2mo_avg(response, 'bandwidth') / 1000.0, 2)
   
 
 def check_tshirt(search_query):

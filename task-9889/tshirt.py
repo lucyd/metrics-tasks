@@ -28,30 +28,30 @@ def print_debug_info(fingerprint, first_seen_check, exit_port_check, uptime_perc
   else:
     print("Average bandwidth in past 2 months : " + str(avg_bandwidth) + "KBytes/s")
 
-  print("\nElligibility")
+  print("\nEligibility")
   print("------------")
 
   if not first_seen_check:
-    print("Not elligible for T-shirt")
+    print("Not eligible for T-shirt")
     print("Reason : Relay first appeared in past 2 months")
   elif uptime_percent < 95:
-    print("Not elligible for T-shirt")
+    print("Not eligible for T-shirt")
     print("Reason : Insufficient relay uptime percentage")
   else:
     if exit_port_check is False:
       if avg_bandwidth >= 500:
-        print("Elligible for T-shirt")
+        print("Eligible for T-shirt")
         print("Reason : Average bandwidth greater than 500KBytes/s and "
 	      "relay uptime greater than 95%")
       else:
-        print("Not elligible for T-shirt")
+        print("Not eligible for T-shirt")
         print("Reason : Average bandwidth less than 500KBytes/s and port 80 blocked")
     else:
       if avg_bandwidth < 100:
-        print("Not elligible for T-shirt")
+        print("Not eligible for T-shirt")
         print("Reason : Average bandwidth less than 100KBytes/s")
       else:
-          print("Elligible for T-shirt")
+          print("Eligible for T-shirt")
 	  print("Reason : Average bandwidth greater than 100KBytes/s,"
 	        "relay uptime greater than 95% and port 80 unblocked")
   print("")

@@ -9,7 +9,7 @@ from datetime import timedelta, datetime
 TWO_MONTHS = 2 * 30 * 86400
 
 
-def print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth):
+def print_debug_info(fingerprint, first_seen_check, exit_port_check, uptime_percent, avg_bandwidth):
   """ Provides debugging information about relay operator's eligibility 
       for acquiring a t-shirt """
 
@@ -17,6 +17,7 @@ def print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth
   print("\nRelay details")
   print("-------------")
   print("Fingerprint : " + fingerprint)
+  print("First seen at least 2 months ago : " + str(first_seen_check))
   print("Exit to port 80 allowed : " + str(exit_port_check))
   if uptime_percent == -1:
     print("Uptime percentage in past 2 months : Insufficient data")
@@ -30,9 +31,12 @@ def print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth
   print("\nElligibility")
   print("------------")
 
-  if uptime_percent < 95:
+  if not first_seen_check:
     print("Not elligible for T-shirt")
-    print("Reason : Insufficient relay up time")
+    print("Reason : Relay first appeared in past 2 months")
+  elif uptime_percent < 95:
+    print("Not elligible for T-shirt")
+    print("Reason : Insufficient relay uptime percentage")
   else:
     if exit_port_check is False:
       if avg_bandwidth >= 500:
@@ -115,6 +119,14 @@ def check_in_ports(ports):
   return False
 
 
+def check_first_seen(response):
+  """ Checks if relay was first seen at least 2 months ago """
+
+  today = datetime.now()
+  first_seen = datetime.strptime(response['first_seen'], "%Y-%m-%d %H:%M:%S")
+  return (today - first_seen).total_seconds() >= TWO_MONTHS
+
+
 def check_exit_port(response):
   """ Checks if relay allows network traffic to exit through port 80 """
 
@@ -151,16 +163,17 @@ def check_tshirt(search_query):
   print "Fetched bandwidth document"
   uptime_data = fetch_data('uptime', params)['relays']
   print "Fetched uptime document"
-  params['fields'] = 'exit_policy_summary,fingerprint'
-  exit_policies = fetch_data('details', params)['relays']
+  params['fields'] = 'exit_policy_summary,fingerprint,first_seen'
+  details_data = fetch_data('details', params)['relays']
   print "Fetched details document"
 
-  for i in range(len(exit_policies)):
-    fingerprint = exit_policies[i]['fingerprint']
-    exit_port_check = check_exit_port(exit_policies[i])
+  for i in range(len(details_data)):
+    fingerprint = details_data[i]['fingerprint']
+    first_seen_check = check_first_seen(details_data[i])
+    exit_port_check = check_exit_port(details_data[i])
     uptime_percent = get_uptime_percent(uptime_data[i])
     avg_bandwidth = get_avg_bandwidth(bandwidth_data[i])
-    print_debug_info(fingerprint, exit_port_check, uptime_percent, avg_bandwidth)
+    print_debug_info(fingerprint, first_seen_check, exit_port_check, uptime_percent, avg_bandwidth)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 #!/usr/bin/python
 
-import urllib, urllib2
+import sys
+import urllib
+import urllib2
 import json
 import threading
 import _strptime
@@ -9,8 +11,9 @@ from datetime import timedelta, datetime
 TWO_MONTHS = 2 * 30 * 86400
 
 
-def print_debug_info(fingerprint, first_seen_check, exit_port_check, uptime_percent, avg_bandwidth):
-  """ Provides debugging information about relay operator's eligibility 
+def print_debug_info(fingerprint, first_seen_check, exit_port_check,
+                     uptime_percent, avg_bandwidth):
+  """ Provides debugging information about relay operator's eligibility
       for acquiring a t-shirt """
 
   print("=================================================================")
@@ -26,7 +29,8 @@ def print_debug_info(fingerprint, first_seen_check, exit_port_check, uptime_perc
   if avg_bandwidth == -1:
     print("Average bandwidth in past 2 months : Insufficient data")
   else:
-    print("Average bandwidth in past 2 months : " + str(avg_bandwidth) + "KBytes/s")
+    print("Average bandwidth in past 2 months : " + str(avg_bandwidth) +
+          "KBytes/s")
 
   print("\nEligibility")
   print("------------")
@@ -42,18 +46,19 @@ def print_debug_info(fingerprint, first_seen_check, exit_port_check, uptime_perc
       if avg_bandwidth >= 500:
         print("Eligible for T-shirt")
         print("Reason : Average bandwidth greater than 500KBytes/s and "
-	      "relay uptime greater than 95%")
+              "relay uptime greater than 95%")
       else:
         print("Not eligible for T-shirt")
-        print("Reason : Average bandwidth less than 500KBytes/s and port 80 blocked")
+        print("Reason : Average bandwidth less than 500KBytes/s and "
+              "port 80 blocked")
     else:
       if avg_bandwidth < 100:
         print("Not eligible for T-shirt")
         print("Reason : Average bandwidth less than 100KBytes/s")
       else:
           print("Eligible for T-shirt")
-	  print("Reason : Average bandwidth greater than 100KBytes/s,"
-	        "relay uptime greater than 95% and port 80 unblocked")
+          print("Reason : Average bandwidth greater than 100KBytes/s,"
+                "relay uptime greater than 95% and port 80 unblocked")
   print("")
 
 
@@ -70,7 +75,7 @@ def fetch_data(doc_type, params):
   except urllib2.HTTPError, error:
     print("Error " + str(error.code) + ": " + error.reason)
     exit()
-  # Exit if no relay object in response  
+  # Exit if no relay object in response
   response_dict = json.loads(response.read())
   if response_dict['relays'] == []:
     print("Error: No such relay")
@@ -83,11 +88,11 @@ def calculate_2mo_avg(response, response_type):
 
   # Check if required data is present in the response
   if response_type == 'uptime':
-    if '3_months' not in response['uptime'].keys():
+    if '3_months' not in response['uptime']:
       return -1
     data = response['uptime']['3_months']
   elif response_type == 'bandwidth':
-    if '3_months' not in response['write_history'].keys():
+    if '3_months' not in response['write_history']:
       return -1
     data = response['write_history']['3_months']
   # Sum up all values within past 2 months
@@ -103,7 +108,7 @@ def calculate_2mo_avg(response, response_type):
         _sum += (data['values'][i])
         count += 1
   # Calculate the result
-  return (_sum * data['factor'])/count
+  return (_sum * data['factor']) / count
 
 
 def check_in_ports(ports):
@@ -113,8 +118,8 @@ def check_in_ports(ports):
     if entry == '80':
       return True
     if '-' in entry:
-      [x,y] = entry.split('-')
-      if 80 in range(int(x),int(y)):
+      [x, y] = entry.split('-')
+      if 80 in range(int(x), int(y)):
         return True
   return False
 
@@ -148,16 +153,16 @@ def get_avg_bandwidth(response):
   """ Calculates average bandwidth of traffic through the relay """
 
   return round(calculate_2mo_avg(response, 'bandwidth') / 1000.0, 2)
-  
+
 
 def check_tshirt(search_query):
-  """ Fetches required onionoo documents and evaluates the 
+  """ Fetches required onionoo documents and evaluates the
       t-shirt qualification criteria for each of the relays """
 
   # Fetch the required documents from onionoo
   params = {
-     'type' : 'relay',
-     'search' : search_query
+      'type': 'relay',
+      'search': search_query
   }
   bandwidth_data = fetch_data('bandwidth', params)['relays']
   print "Fetched bandwidth document"
@@ -167,16 +172,26 @@ def check_tshirt(search_query):
   details_data = fetch_data('details', params)['relays']
   print "Fetched details document"
 
+  if not len(bandwidth_data) == len(uptime_data) == len(details_data):
+    print("Oops! Inconsistent onionoo data")
+    exit()
+
   for i in range(len(details_data)):
     fingerprint = details_data[i]['fingerprint']
     first_seen_check = check_first_seen(details_data[i])
     exit_port_check = check_exit_port(details_data[i])
     uptime_percent = get_uptime_percent(uptime_data[i])
     avg_bandwidth = get_avg_bandwidth(bandwidth_data[i])
-    print_debug_info(fingerprint, first_seen_check, exit_port_check, uptime_percent, avg_bandwidth)
+    print_debug_info(fingerprint, first_seen_check, exit_port_check,
+                     uptime_percent, avg_bandwidth)
 
 
 if __name__ == "__main__":
-  search_query = raw_input('Enter relay search-query : ')
+  if len(sys.argv) == 1:
+    search_query = raw_input('Enter relay search-query : ')
+  elif len(sys.argv) != 2:
+    print("Usage: python %s search_term(optional)" % sys.argv[0])
+    exit()
+  else:
+    search_query = sys.argv[1]
   check_tshirt(search_query)
-
